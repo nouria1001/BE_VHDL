@@ -1,25 +1,23 @@
---KACEMI/BOUSSLAH
-
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
 use ieee.numeric_std.all;
 use ieee.std_logic_unsigned.all;
 
-entity anemometre is
+entity avalon_anemometre is
     port (
-        ARst_N : in std_logic;
-        Clk_50M : in std_logic;
+        clk : in std_logic;
         in_freq_anemo : in std_logic;
-        continu : in std_logic;
-		start_stop :in std_logic;
-        data_anemo : out std_logic_vector(7 downto 0);
-        data_valid : out std_logic;
-        pulse0 : out std_logic;
-        Debug1 : out std_logic_vector(7 DOwnto 0)
-    );
-end anemometre;
+ 		  chipselect, write_n, reset_n : in std_logic;
+		  writedata : in std_logic_vector (31 downto 0);
+		  readdata : out std_logic_vector (31 downto 0);
+		  address: std_logic_vector (1 downto 0)
+	);
+end avalon_anemometre;
 
-architecture arc of anemometre is 
+
+
+
+architecture arc of avalon_anemometre is 
 -- DFM
 component dfm is
     Port ( clk_50M : in STD_LOGIC;
@@ -85,79 +83,59 @@ end component;
 			Q : out std_logic
 		);
 	end component;
+---------------------------------------
+component  anemometre is
+    port (
+       ARst_N : in std_logic;
+        Clk_50M : in std_logic;
+        in_freq_anemo : in std_logic;
+        data_anemo : out std_logic_vector(7 downto 0);
+        data_valid : out std_logic;
+		  continu : in std_logic;
+        pulse0 : out std_logic;
+        Debug1 : out std_logic_vector(7 DOwnto 0)
+    );
+end component;
 
 --- declaration de signaux internes pour les connexions entre les blocs
-signal ARst : std_logic;
 signal in_freq_FM : std_logic;
 signal CptFM_Q : std_logic_vector(7 downto 0);
 signal pulse_Q : std_logic;
 signal mesureout : std_logic ;
+SIGNAL   config : std_logic_vector (31 downto 0);
+SIGNAL   start_stop, continu, raz_n : std_logic;
+Signal   data_anem : STD_LOGIC_VECTOR(7 DOWNTO 0);
+Signal   data_valid : STD_LOGIC;
+
 --------------begin---------------------
 begin
 ------------------------------
-    ARst <= not ARst_N;
-    uDFM : dfm
-        port map ( 
-            clk_50M => Clk_50M,
-            in_freq_anemo => in_freq_anemo AND mesureout,
-            in_freq_a => in_freq_FM
-        );  
- ------------------------------
-    uCptFM : cmp 
-        generic map (
-            N   => 8
-        )
-        port map (  
-            clk => Clk_50M,
-            Arst => ARst,
-            SRst => pulse_Q,
-            en  => in_freq_FM,
-            Ud  => '1',
-            Q   => CptFM_Q
-        );
-----------------------------------------------
-    ugenerateurpulse : generateurpulse
-        generic map (
-            compare_value => 50_000_000
-        )
-        port map (
-            clk => Clk_50M,
-            reset => not mesureout,
-            pulse => pulse_Q,
-            clkgen => open
-	    );
-----------------registre-----------------------------
-    ureg :  registre 
-        generic map (
-            N => 8
-        )
-        port map ( 
-            clk =>clk_50M,
-            E => CptFM_Q,
-            en => pulse_Q,
-            Q => data_anemo
-        );
-  pulse0 <= pulse_Q;
-  Debug1 <= CptFM_Q;
+uanem:anemometre
+   port map ( 
+	ARst_N => raz_n,
+	Clk_50M => clk,
+	continu=>continu,
+        in_freq_anemo=>in_freq_anemo,
+        data_anemo =>data_anem,
+        data_valid =>data_valid
+		
+    );
+----------ecriture registres
+process_write: process (clk, reset_n)
+begin
+	if reset_n = '0' then
+	elsif clk'event and clk = '1' then
+		if chipselect ='1' and write_n = '0' then
+			start_stop <= writedata(2);
+			continu <= writedata(1);
+			raz_n <= writedata(0);
+		end if;
+	end if;
+end process;
 
---------------------mae---------------------------------------
 
-umode : mae
-port map ( 
-        ARst_N =>  ARst_N ,
-        Clk => clk_50M,
-        data_valid => pulse_Q, 
-        continu  => continu,
-        start_stop => start_stop,
-        mesure_encours => mesureout
-		 );
---------------------------------------------------------
-uBascule1 : BasculeD
-	port map ( 
-		reset => ARst, 
-		clk => clk_50M, 
-		en => '1', 
-		D => pulse_Q,
-		Q => data_valid);
+-- lecture registres
+readdata <= "0000000000000000000000"& data_valid & '0' & data_anem;
+		
 end arc;
     
